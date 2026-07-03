@@ -1,0 +1,88 @@
+---
+title: "Install BasicReturns in Your Python Project"
+sidebarTitle: "Installation"
+description: "Install BasicReturns via pip, pip3, uv, or Poetry on Python 3.8–3.12. Pydantic 2.12.5 is the only dependency and is installed automatically."
+---
+
+BasicReturns is published on [PyPI](https://pypi.org/project/BasicReturns/) and can be added to any Python project with a single command. This page covers system requirements, all supported installation methods, how to verify the installation, and how to configure type checking to take advantage of the library's built-in type annotations.
+
+## Requirements
+
+Before installing, make sure your environment meets the following requirements.
+
+| Requirement | Minimum version |
+|---|---|
+| Python | **3.8** (3.8, 3.9, 3.10, 3.11, and 3.12 are all tested) |
+| pydantic | **2.12.5** — installed automatically as a dependency, no manual action needed |
+
+No other runtime dependencies are required. BasicReturns is OS-independent and works on Linux, macOS, and Windows.
+
+## Installation
+
+Choose the package manager you already use in your project.
+
+<Tabs>
+  <Tab title="pip">
+    ```bash
+    pip install BasicReturns
+    ```
+  </Tab>
+  <Tab title="pip3">
+    ```bash
+    pip3 install BasicReturns
+    ```
+  </Tab>
+  <Tab title="uv">
+    ```bash
+    uv add BasicReturns
+    ```
+  </Tab>
+  <Tab title="Poetry">
+    ```bash
+    poetry add BasicReturns
+    ```
+  </Tab>
+</Tabs>
+
+## Verify the Installation
+
+After installing, confirm the correct version is available in your environment by importing the package and printing its `__version__` attribute.
+
+```python
+python -c "import BasicReturns; print(BasicReturns.__version__)"
+```
+
+Expected output:
+
+```
+0.1.1
+```
+
+If you see a `ModuleNotFoundError`, double-check that the install command ran inside the same virtual environment you are using to run Python.
+
+## Type Checking Setup
+
+BasicReturns ships a `py.typed` marker file (as specified in [PEP 561](https://peps.python.org/pep-0561/)). This means **no extra configuration is needed** — both MyPy and Pyright automatically discover the package's type annotations when they are installed in the same environment as BasicReturns.
+
+To confirm that MyPy can resolve the types in a module that uses BasicReturns, run:
+
+```bash
+mypy your_module.py
+```
+
+A clean run with no errors confirms that `BasicReturn`, `DataAndMsgReturn`, and all their fields are fully typed and visible to the type checker. Pyright (used by Pylance in VS Code) picks up the same information automatically without any additional settings.
+
+<Tip>
+  Pin the version in your `requirements.txt` or `pyproject.toml` to ensure reproducible builds across environments and CI pipelines.
+
+  ```text requirements.txt
+  BasicReturns==0.1.1
+  ```
+
+  ```toml pyproject.toml
+  [project]
+  dependencies = [
+      "BasicReturns==0.1.1",
+  ]
+  ```
+</Tip>

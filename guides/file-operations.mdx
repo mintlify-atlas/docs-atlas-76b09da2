@@ -1,0 +1,134 @@
+---
+title: "File Operations with Unified Return Values"
+sidebarTitle: "File Operations"
+description: "Learn how to build file I/O utilities in Python using BasicReturns for consistent, predictable error handling across read and write operations."
+---
+
+Building file utilities in Python often means dealing with a mix of exceptions, `None` returns, and ad-hoc boolean flags. BasicReturns replaces all of that with a single, predictable contract: every function returns either a `BasicReturn` or a `DataAndMsgReturn`, and callers always know exactly which fields to inspect. This guide walks through a complete `FilesUtils` class that demonstrates these patterns in practice.
+
+## The FilesUtils Class
+
+The following example implements three file operations — reading raw text, parsing JSON, and writing JSON — each returning a unified result object. Notice that `read_file` and `read_json` return `DataAndMsgReturn` because they produce data for the caller, while `write_json` returns `BaseReturn` because the caller only needs to know whether the write succeeded.
+
+```python
+from io import TextIOWrapper
+from pathlib import Path
+import json
+from typing import Any
+from BasicReturns import BaseReturn, DataAndMsgReturn
+
+class FilesUtils:
+    @staticmethod
+    def file_exists(filename: str) -> bool:
+        return Path(filename).is_file()
+
+    @staticmethod
+    def read_file(filename: str) -> DataAndMsgReturn:
+        """Read file content with unified return structure."""
+        response = DataAndMsgReturn()
+
+        try:
+            if not FilesUtils.file_exists(filename):
+                response.ok = False
+                response.error = FileNotFoundError(f"File '{filename}' not found")
+                response.msg = "File does not exist"
+                return response
+
+            with open(filename, 'r', encoding='utf-8') as file:
+                response.data = file.read()
+                response.msg = f"Successfully read file: {filename}"
+        except Exception as e:
+            response.ok = False
+            response.error = e
+            response.msg = f"Error reading file: {filename}"
+
+        return response
+
+    @staticmethod
+    def read_json(filename: str) -> DataAndMsgReturn:
+        """Read and parse JSON file with unified error handling."""
+        response = DataAndMsgReturn()
+        file_result = FilesUtils.read_file(filename)
+
+        if not file_result.ok:
+            # Propagate the error from read_file
+            response.ok = file_result.ok
+            response.error = file_result.error
+            response.msg = file_result.msg
+            return response
+
+        try:
+            response.data = json.loads(file_result.data)
+            response.msg = f"Successfully parsed JSON from: {filename}"
+        except json.JSONDecodeError as e:
+            response.ok = False
+            response.error = e
+            response.msg = f"Invalid JSON format in file: {filename}"
+
+        return response
+
+    @staticmethod
+    def write_json(filename: str, data: dict) -> BaseReturn:
+        """Write dictionary to JSON file with atomic operation handling."""
+        response = BaseReturn()
+
+        try:
+            with open(filename, 'w', encoding='utf-8') as file:
+                json.dump(data, file, indent=2, sort_keys=True, ensure_ascii=False)
+            response.msg = f"Successfully wrote JSON to: {filename}"
+        except Exception as e:
+            response.ok = False
+            response.error = e
+            response.msg = f"Failed to write JSON file: {filename}"
+
+        return response
+```
+
+## Usage in Application
+
+With `FilesUtils` in place, application code becomes straightforward to read. Check `result.ok`, then either consume `result.data` or handle `result.error` — no try/except blocks required at the call site.
+
+```python
+# Read configuration file
+config_result = FilesUtils.read_json("config.json")
+
+if config_result.ok:
+    config = config_result.data
+    print("Configuration loaded:", config)
+else:
+    print("Error loading config:", config_result.error)
+    # Fallback to default configuration
+    config = {"default": "settings"}
+
+# Save user data
+user_data = {"name": "John Doe", "email": "john@example.com"}
+save_result = FilesUtils.write_json("users/john.json", user_data)
+
+if save_result.ok:
+    print("User data saved successfully")
+else:
+    print("Failed to save user data:", save_result.error)
+    # Handle the error appropriately
+```
+
+## Patterns Explained
+
+**Why `DataAndMsgReturn` for read operations**
+
+Both `read_file` and `read_json` need to hand data back to the caller — the raw file contents or a parsed dictionary. `DataAndMsgReturn` adds the `data` and `msg` fields on top of the base `ok`/`error` pair, making it the right choice whenever a function produces a meaningful result value alongside its success status.
+
+**Why `BasicReturn` is sufficient for write operations**
+
+`write_json` only needs to communicate success or failure — there is no result value to return. Using `BasicReturn` (aliased as `BaseReturn` in the import) keeps the return type minimal and makes the function's intent immediately clear to anyone reading the code.
+
+**How errors propagate from `read_file` into `read_json`**
+
+`read_json` calls `read_file` first. If `read_file` returns `ok=False`, `read_json` copies `ok`, `error`, and `msg` directly onto its own response and returns early. The caller of `read_json` therefore sees the original `FileNotFoundError` and message without any wrapping or loss of detail — a transparent error propagation chain.
+
+<Note>
+  `Path(filename).is_file()` is used for file-existence checks before attempting to open the file. This avoids catching OS-level errors for a condition that is entirely predictable and can be tested cheaply. Reserve the broad `except Exception` block for truly unexpected I/O failures.
+</Note>
+
+<Tip>
+  Centralise all file utilities in a single class or module — just as `FilesUtils` does here. When every file-related function in your codebase returns `DataAndMsgReturn` or `BasicReturn`, call sites become uniform and new contributors immediately understand the error-handling contract without reading each function's implementation.
+</Tip>

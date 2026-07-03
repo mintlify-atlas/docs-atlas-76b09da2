@@ -1,0 +1,217 @@
+---
+title: "Structured Error Handling with BasicReturns"
+sidebarTitle: "Error Handling"
+description: "Learn how to use the ok/error pattern from BasicReturns to replace scattered try/except blocks with predictable, composable error handling."
+---
+
+One of the core benefits of BasicReturns is that it pushes error information into a structured return value instead of propagating exceptions across call sites. Every function that returns a `BasicReturn` or `DataAndMsgReturn` gives the caller a consistent contract: check `result.ok`, then read `result.error` if something went wrong.
+
+---
+
+## The ok/error pattern
+
+Traditional Python code forces every caller to wrap calls in `try/except` blocks. With BasicReturns, the function itself catches exceptions internally and records them in the return object. The caller only needs a simple `if result.ok` check.
+
+<CodeGroup>
+
+```python Before — raise-and-catch style
+import json
+
+def parse_json_file(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)  # raises on any error
+
+# Every caller must handle exceptions independently
+try:
+    config = parse_json_file("config.json")
+except FileNotFoundError as e:
+    print("File missing:", e)
+    config = {}
+except json.JSONDecodeError as e:
+    print("Bad JSON:", e)
+    config = {}
+```
+
+```python After — BasicReturns style
+import json
+from BasicReturns import DataAndMsgReturn
+
+def parse_json_file(path: str) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            response.data = json.load(fh)
+            response.msg = f"Loaded {path} successfully"
+    except Exception as e:
+        response.ok = False
+        response.error = e
+        response.msg = f"Could not load {path}"
+
+    return response
+
+# Caller is clean — no try/except required
+result = parse_json_file("config.json")
+
+if result.ok:
+    config = result.data
+else:
+    print("Error loading config:", result.error)
+    config = {}
+```
+
+</CodeGroup>
+
+---
+
+## Setting errors
+
+Inside an `except` block, set `ok = False` and assign the caught exception to `error`. Optionally set `msg` on a `DataAndMsgReturn` to give the caller human-readable context.
+
+```python
+from BasicReturns import DataAndMsgReturn
+
+def fetch_user(user_id: int) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+
+    try:
+        # Simulated database call
+        user = db.get(user_id)
+        if user is None:
+            raise LookupError(f"No user found with id={user_id}")
+
+        response.data = user
+        response.msg = "User fetched successfully"
+    except LookupError as e:
+        response.ok = False
+        response.error = e
+        response.msg = "User lookup failed"
+    except Exception as e:
+        response.ok = False
+        response.error = e
+        response.msg = "Unexpected error during user fetch"
+
+    return response
+```
+
+---
+
+## Propagating errors
+
+When one function calls another that also returns a `BasicReturn`-based object, you can forward the inner error directly to the outer return value without re-raising or re-wrapping.
+
+```python
+import json
+from BasicReturns import DataAndMsgReturn
+
+def read_file(path: str) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            response.data = fh.read()
+            response.msg = f"Read {path}"
+    except OSError as e:
+        response.ok = False
+        response.error = e
+        response.msg = f"Could not read {path}"
+    return response
+
+def read_json(path: str) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+
+    # Delegate file reading — propagate any error immediately
+    file_result = read_file(path)
+    if not file_result.ok:
+        response.ok = file_result.ok
+        response.error = file_result.error
+        response.msg = file_result.msg
+        return response
+
+    # File was read — now parse
+    try:
+        response.data = json.loads(file_result.data)
+        response.msg = f"Parsed JSON from {path}"
+    except json.JSONDecodeError as e:
+        response.ok = False
+        response.error = e
+        response.msg = f"Invalid JSON in {path}"
+
+    return response
+```
+
+This chaining pattern means error context is never lost — the original exception travels all the way up to the top-level caller.
+
+---
+
+## Inspecting errors
+
+Because `error` can hold any object, you can use `isinstance` to branch on the specific exception type and tailor the response.
+
+```python
+import logging
+from BasicReturns import DataAndMsgReturn
+
+logger = logging.getLogger(__name__)
+
+result = read_json("settings.json")
+
+if not result.ok:
+    if isinstance(result.error, FileNotFoundError):
+        logger.warning("Settings file missing — using defaults. Detail: %s", result.error)
+    elif isinstance(result.error, PermissionError):
+        logger.error("Permission denied reading settings: %s", result.error)
+    else:
+        logger.exception("Unexpected error: %s", result.error)
+```
+
+---
+
+## The `msg` field for context
+
+When using `DataAndMsgReturn`, always populate `msg` alongside `error`. The message should be safe to display to end users or write to a log without leaking sensitive implementation details.
+
+```python
+from BasicReturns import DataAndMsgReturn
+
+def create_account(email: str, password: str) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+
+    try:
+        user = User.create(email=email, password=password)
+        response.data = user
+        response.msg = "Account created successfully"
+    except DuplicateEmailError as e:
+        response.ok = False
+        response.error = e
+        # msg is user-facing; error carries the full technical detail
+        response.msg = "An account with that email already exists"
+    except Exception as e:
+        response.ok = False
+        response.error = e
+        response.msg = "Account creation failed — please try again"
+
+    return response
+
+
+result = create_account("alice@example.com", "hunter2")
+
+# Surface msg to the UI, log error for diagnostics
+print(result.msg)           # Account created successfully  (or error message)
+logger.debug(result.error)  # None on success; exception on failure
+```
+
+---
+
+<Warning>
+  `error` defaults to `None` even when `ok` is `False` if you forget to set it. Always assign `response.error = e` inside your `except` block — otherwise callers that inspect `result.error` will see `None` and lose the diagnostic information.
+</Warning>
+
+<Tip>
+  When logging errors, prefer `str(result.error)` to get the human-readable exception message, or pass `result.error` directly to `logger.exception()` / `logger.error()` so the full traceback is preserved in structured log outputs.
+
+  ```python
+  logger.error("Operation failed: %s", str(result.error))
+  # or, to include traceback context:
+  logger.error("Operation failed", exc_info=result.error)
+  ```
+</Tip>

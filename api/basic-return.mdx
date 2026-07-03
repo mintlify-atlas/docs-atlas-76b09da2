@@ -1,0 +1,118 @@
+---
+title: "BasicReturn Class Reference"
+sidebarTitle: "BasicReturn"
+description: "Pydantic model class with ok and error fields for signalling operation success or failure."
+---
+
+`BasicReturn` is the base return model in BasicReturns. It is a Pydantic `BaseModel` subclass with two fields — `ok` and `error` — that signal whether an operation succeeded and, if not, what went wrong.
+
+```python
+from BasicReturns import BasicReturn
+```
+
+## Class Signature
+
+```python
+from typing import Any, Optional
+from pydantic import BaseModel
+
+class BasicReturn(BaseModel):
+    ok: Optional[bool] = True
+    error: Optional[Any] = None
+```
+
+## Fields
+
+<ParamField path="ok" type="Optional[bool]" default="True">
+  `True` when the operation completed successfully. Set this to `False` on failure to signal that something went wrong.
+</ParamField>
+
+<ParamField path="error" type="Optional[Any]" default="None">
+  The exception or error object captured when `ok` is `False`. Defaults to `None` on a successful return.
+</ParamField>
+
+## Methods
+
+### `to_dict()`
+
+Returns a dictionary representation of the instance.
+
+```python
+def to_dict(self) -> dict:
+    return {"ok": self.ok, "error": self.error}
+```
+
+**Return value**
+
+<ResponseField name="ok" type="bool">
+  Whether the operation succeeded.
+</ResponseField>
+
+<ResponseField name="error" type="Any or None">
+  The error if `ok` is `False`, otherwise `None`.
+</ResponseField>
+
+---
+
+### `__str__()`
+
+Returns a human-readable string representation of the instance, formatted as:
+
+```
+OK: {ok}
+Error: {error}
+```
+
+## Usage Example
+
+```python
+from BasicReturns import BasicReturn
+
+def parse_age(value: str) -> BasicReturn:
+    result = BasicReturn()
+
+    try:
+        age = int(value)
+        if age < 0:
+            raise ValueError("Age cannot be negative")
+    except Exception as e:
+        result.ok = False
+        result.error = e
+
+    return result
+
+# Call site
+response = parse_age("abc")
+
+if response.ok:
+    print("Parsed successfully")
+else:
+    print(f"Failed: {response.error}")
+# Failed: invalid literal for int() with base 10: 'abc'
+```
+
+## `to_dict()` Examples
+
+**Success state**
+
+```python
+result = BasicReturn()
+print(result.to_dict())
+# {'ok': True, 'error': None}
+```
+
+**Failure state**
+
+```python
+result = BasicReturn()
+result.ok = False
+result.error = RuntimeError("Something went wrong")
+print(result.to_dict())
+# {'ok': False, 'error': RuntimeError('Something went wrong')}
+```
+
+<Note>
+  `BasicReturn` is intentionally minimal — it only carries a success flag and an optional error. Use `DataAndMsgReturn` when you need to return a result payload or a human-readable message alongside the success state.
+</Note>
+
+See [DataAndMsgReturn](/api/data-and-msg-return) for the extended class.

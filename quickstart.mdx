@@ -1,47 +1,129 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with BasicReturns in 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Install BasicReturns, import BasicReturn and DataAndMsgReturn, and write your first standardized function with consistent success and error handling."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+This page walks you through everything you need to go from zero to a working BasicReturns integration. By the end you will have installed the library, imported both public models, written functions that return consistent success/failure objects, and serialized a result to a dictionary — all in under five minutes.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
 
-    ```bash
-    npm install your-package
+  <Step title="Install BasicReturns">
+    Install the package from PyPI using your preferred package manager. The only dependency — `pydantic==2.12.5` — is pulled in automatically.
+
+    <CodeGroup>
+      ```bash pip
+      pip install BasicReturns
+      ```
+      ```bash pip3
+      pip3 install BasicReturns
+      ```
+      ```bash uv
+      uv add BasicReturns
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Import the Models">
+    Both public classes are available directly from the top-level `BasicReturns` package. A single import line is all you need.
+
+    ```python
+    from BasicReturns import BasicReturn, DataAndMsgReturn
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
+  <Step title="Use BasicReturn for Simple Success / Failure">
+    `BasicReturn` is the right choice when your function either succeeds or fails with no payload to return — for example a write, delete, or validation step. It defaults `ok` to `True`, so you only need to set fields when something goes wrong.
+
+    ```python
+    from BasicReturns import BasicReturn
+
+    def validate_username(username: str) -> BasicReturn:
+        response = BasicReturn()
+
+        if not username or len(username) < 3:
+            response.ok = False
+            response.error = ValueError("Username must be at least 3 characters")
+            return response
+
+        # Validation passed — ok stays True, error stays None
+        return response
+
+
+    # Happy path
+    result = validate_username("alice")
+    print(result.ok)     # True
+    print(result.error)  # None
+
+    # Failure path
+    result = validate_username("ab")
+    print(result.ok)     # False
+    print(result.error)  # ValueError: Username must be at least 3 characters
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
+  <Step title="Use DataAndMsgReturn for Operations That Return Data">
+    `DataAndMsgReturn` extends `BasicReturn` with two extra fields: `data` for the payload and `msg` for a human-readable status message. The example below is taken directly from the README.
+
+    ```python
+    from BasicReturns import DataAndMsgReturn
+
+    def divide_numbers(a: float, b: float) -> DataAndMsgReturn:
+        """Safely divide two numbers with unified return structure."""
+        response = DataAndMsgReturn()
+
+        try:
+            if b == 0:
+                raise ZeroDivisionError("Cannot divide by zero")
+            response.data = a / b
+            response.msg = "Division completed successfully"
+        except Exception as e:
+            response.ok = False
+            response.error = e
+            response.msg = "Division failed"
+
+        return response
+
+    # Usage example
+    result = divide_numbers(10, 2)
+
+    if result.ok:
+        print(f"{result.msg}: {result.data}")  # Division completed successfully: 5.0
+    else:
+        print(f"{result.msg}: {result.error}")  # Division failed: Cannot divide by zero
     ```
   </Step>
+
+  <Step title="Serialize a Result to a Dictionary">
+    Every model exposes a `to_dict()` method that converts all fields to a plain Python dictionary. This is useful for building JSON API responses, writing to logs, or passing results to code that expects plain dicts.
+
+    ```python
+    result = divide_numbers(10, 2)
+
+    print(result.to_dict())
+    # {'ok': True, 'error': None, 'msg': 'Division completed successfully', 'data': 5.0}
+
+    failed = divide_numbers(10, 0)
+
+    print(failed.to_dict())
+    # {'ok': False, 'error': ZeroDivisionError('Cannot divide by zero'), 'msg': 'Division failed', 'data': {}}
+    ```
+  </Step>
+
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+<Note>
+  Always check `result.ok` before accessing `result.data`. When `ok` is `False`, the `data` field defaults to `None` (serialized as `{}` by `to_dict()`), so reading it without a guard may produce unexpected results in downstream logic.
+</Note>
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+## Next Steps
+
+Now that you have a working integration, explore the full model reference to learn about every field, default value, and method in detail.
+
+<Card
+  icon="book-open"
+  title="Return Models Reference"
+  href="/concepts/return-models"
+>
+  Deep-dive into `BasicReturn` and `DataAndMsgReturn`: field types, default values, the `to_dict()` method, `__str__` formatting, and inheritance hierarchy.
+</Card>

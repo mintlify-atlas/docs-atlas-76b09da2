@@ -1,0 +1,69 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "BasicReturns",
+  "projectDescription": "A lightweight Python library that standardizes function return values using Pydantic models to enforce consistent error handling, readability, and type safety across Python applications.",
+  "theme": "luma",
+  "primaryColor": "#2673d9",
+  "lightColor": "#54b8e9",
+  "darkColor": "#fc8404",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/return-models",
+              "concepts/error-handling",
+              "concepts/type-safety"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/file-operations",
+              "guides/api-integration",
+              "guides/chaining-operations",
+              "guides/best-practices"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Classes",
+            "pages": [
+              "api/basic-return",
+              "api/data-and-msg-return"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Unified return models (BasicReturn and DataAndMsgReturn) for consistent function signatures",
+    "Built-in ok/error flags modeled after HTTP response semantics",
+    "Optional message and data fields for rich operation context",
+    "Full Pydantic v2 integration with MyPy-compatible type annotations",
+    "to_dict() serialization for JSON/API response compatibility",
+    "Python 3.8+ support with py.typed marker for typed library consumers"
+  ],
+  "publicApiSurface": [
+    "BasicReturn (Pydantic BaseModel): ok, error, to_dict()",
+    "DataAndMsgReturn (extends BasicReturn): msg, data, to_dict()",
+    "__version__ = '0.1.1'",
+    "__all__ = ['BasicReturn', 'DataAndMsgReturn']"
+  ]
+}

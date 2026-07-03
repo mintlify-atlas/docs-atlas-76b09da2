@@ -1,0 +1,154 @@
+---
+title: "Chaining Multiple Operations with BasicReturns"
+sidebarTitle: "Chaining Operations"
+description: "Learn how to compose multi-step pipelines with BasicReturns by propagating errors early and accumulating results through a clean chain of operations."
+---
+
+Many real-world workflows involve several sequential steps where each step depends on the success of the previous one — reading a file, validating its contents, transforming the data, and so on. BasicReturns makes these pipelines easy to reason about: every step returns a result with an `ok` flag, and a single check at each stage is enough to decide whether to continue or return an error immediately. This "early return on failure" pattern keeps nesting shallow and makes the happy path easy to follow.
+
+## Chaining in Practice
+
+The example below is taken directly from the BasicReturns README. `load_and_validate_config` chains a file-read step with a validation step, propagating errors from either step to the caller without losing detail.
+
+```python
+def load_and_validate_config() -> DataAndMsgReturn:
+    config_result = FilesUtils.read_json("config.json")
+
+    if not config_result.ok:
+        return config_result  # Return the error immediately
+
+    validation_result = validate_config(config_result.data)
+
+    if not validation_result.ok:
+        return DataAndMsgReturn(
+            ok=False,
+            error=validation_result.error,
+            msg=f"Configuration validation failed: {validation_result.msg}"
+        )
+
+    return DataAndMsgReturn(
+        data=config_result.data,
+        msg="Configuration loaded and validated successfully"
+    )
+```
+
+## Step-by-Step Explanation
+
+<Steps>
+  <Step title="Each step calls the previous and checks ok">
+    Every operation in the chain is a function that returns a `BasicReturn` or `DataAndMsgReturn`. After calling each one, inspect `result.ok` before proceeding. If `ok` is `True`, extract the data you need and pass it to the next step.
+  </Step>
+
+  <Step title="If ok is False, return the failed result immediately">
+    The moment any step fails, return its result (or a newly constructed `DataAndMsgReturn`) without executing any remaining steps. This early-return pattern prevents downstream code from operating on invalid or missing data and keeps the function body flat.
+  </Step>
+
+  <Step title="If all steps succeed, construct a final result with the accumulated data">
+    After all checks pass, build a final `DataAndMsgReturn` that carries the accumulated result — in the example above, the fully loaded and validated config — along with a success message that describes the complete operation.
+  </Step>
+</Steps>
+
+## When to Propagate vs. Wrap Errors
+
+When a step fails you have two options: pass the failed result straight back to the caller, or construct a new `DataAndMsgReturn` that adds context. The right choice depends on whether the caller needs to know *which* step failed and *why*.
+
+<Tabs>
+  <Tab title="Propagate">
+    Return the failed result directly. The caller receives the original `ok`, `error`, and `msg` fields unchanged — a fully transparent pipeline. Use this when the upstream error message is already descriptive enough.
+
+    ```python
+    config_result = FilesUtils.read_json("config.json")
+
+    if not config_result.ok:
+        return config_result  # error and msg travel up the stack unmodified
+    ```
+  </Tab>
+
+  <Tab title="Wrap">
+    Construct a new `DataAndMsgReturn` that includes the original error but adds a higher-level message. Use this when the caller needs context about *which stage* of the pipeline failed, not just what the low-level error was.
+
+    ```python
+    validation_result = validate_config(config_result.data)
+
+    if not validation_result.ok:
+        return DataAndMsgReturn(
+            ok=False,
+            error=validation_result.error,
+            msg=f"Configuration validation failed: {validation_result.msg}"
+        )
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Returning a failed result directly — the "propagate" approach — passes all of its fields (`ok`, `error`, `msg`, and `data`) to the caller unchanged. This is ideal for transparent pipelines where the original error context is the most useful information the caller can receive.
+</Note>
+
+## Minimal Three-Step Pipeline
+
+The pattern scales naturally to any number of steps. The example below shows a read → validate → transform pipeline; each stage checks `ok` and returns early on failure, keeping the logic linear and easy to test in isolation.
+
+```python
+from BasicReturns import DataAndMsgReturn
+
+def read_config(path: str) -> DataAndMsgReturn:
+    """Read raw config data from disk."""
+    return FilesUtils.read_json(path)
+
+def validate_config(config: dict) -> DataAndMsgReturn:
+    """Validate required fields are present."""
+    response = DataAndMsgReturn()
+    required = ["host", "port", "database"]
+    missing = [k for k in required if k not in config]
+
+    if missing:
+        response.ok = False
+        response.error = ValueError(f"Missing keys: {missing}")
+        response.msg = f"Config validation failed: missing {missing}"
+        return response
+
+    response.data = config
+    response.msg = "Config validated successfully"
+    return response
+
+def transform_config(config: dict) -> DataAndMsgReturn:
+    """Normalise config values for application use."""
+    response = DataAndMsgReturn()
+    try:
+        response.data = {**config, "port": int(config["port"])}
+        response.msg = "Config transformed successfully"
+    except (ValueError, KeyError) as e:
+        response.ok = False
+        response.error = e
+        response.msg = "Config transformation failed"
+    return response
+
+def load_config(path: str) -> DataAndMsgReturn:
+    # Step 1: read
+    read_result = read_config(path)
+    if not read_result.ok:
+        return read_result
+
+    # Step 2: validate
+    validation_result = validate_config(read_result.data)
+    if not validation_result.ok:
+        return DataAndMsgReturn(
+            ok=False,
+            error=validation_result.error,
+            msg=f"Configuration validation failed: {validation_result.msg}"
+        )
+
+    # Step 3: transform
+    transform_result = transform_config(validation_result.data)
+    if not transform_result.ok:
+        return DataAndMsgReturn(
+            ok=False,
+            error=transform_result.error,
+            msg=f"Configuration transformation failed: {transform_result.msg}"
+        )
+
+    return DataAndMsgReturn(
+        data=transform_result.data,
+        msg="Configuration loaded, validated, and transformed successfully"
+    )
+```

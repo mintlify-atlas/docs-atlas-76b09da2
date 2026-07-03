@@ -1,0 +1,171 @@
+---
+title: "Type Safety and MyPy Compatibility in BasicReturns"
+sidebarTitle: "Type Safety"
+description: "Learn how BasicReturns ships a PEP 561 py.typed marker for full MyPy and Pyright compatibility, and how to write type-safe code with it."
+---
+
+BasicReturns ships a `py.typed` marker file (defined by [PEP 561](https://peps.python.org/pep-0561/)), which signals to MyPy, Pyright, and other static analysis tools that the package contains inline type annotations. No stub files or extra configuration are required — type checking works out of the box as soon as the package is installed.
+
+---
+
+## Return type annotations
+
+Annotating your function return types with `BasicReturn` or `DataAndMsgReturn` lets static analysers verify that callers handle the return value correctly and that fields are accessed consistently.
+
+```python
+from BasicReturns import BasicReturn, DataAndMsgReturn
+
+def delete_record(record_id: int) -> BasicReturn:
+    """Delete a record by ID. Returns ok=False with the error on failure."""
+    response = BasicReturn()
+
+    try:
+        db.delete(record_id)
+    except Exception as e:
+        response.ok = False
+        response.error = e
+
+    return response
+
+
+def get_user_profile(user_id: int) -> DataAndMsgReturn:
+    """Fetch a user profile. Returns the profile dict in data on success."""
+    response = DataAndMsgReturn()
+
+    try:
+        profile = db.fetch_profile(user_id)
+        response.data = profile
+        response.msg = "Profile loaded"
+    except Exception as e:
+        response.ok = False
+        response.error = e
+        response.msg = "Profile fetch failed"
+
+    return response
+```
+
+With these annotations in place, tools like MyPy know exactly what `.ok`, `.error`, `.msg`, and `.data` are on each return value, and will warn you if you try to access a field that does not exist on the type you declared.
+
+---
+
+## MyPy compatibility
+
+Because the package includes a `py.typed` marker, MyPy picks up the type information automatically — no `--ignore-missing-imports` flag needed.
+
+### Correct usage — no errors
+
+```python
+# my_module.py
+from BasicReturns import DataAndMsgReturn
+
+def load_settings(path: str) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+    response.ok = True        # bool — OK
+    response.msg = "Loaded"   # str  — OK
+    response.data = {"theme": "dark"}  # Any — OK
+    return response
+```
+
+```bash
+$ mypy my_module.py
+Success: no issues found in 1 source file
+```
+
+### Type error MyPy will catch
+
+```python
+# bad_module.py
+from BasicReturns import DataAndMsgReturn
+
+def broken() -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+    # msg expects Optional[str], not an integer
+    response.msg = 404  # type: ignore  ← MyPy flags this without the comment
+    return response
+```
+
+```bash
+$ mypy bad_module.py
+bad_module.py:6: error: Incompatible types in assignment
+    (expression has type "int", variable has type "Optional[str]")
+Found 1 error in 1 file (checked 1 source file)
+```
+
+---
+
+## Pydantic runtime validation
+
+Both classes are Pydantic `BaseModel` subclasses, so field types are also enforced at **runtime**. Pydantic will attempt to coerce values where possible and raise a `ValidationError` when coercion is not possible.
+
+```python
+from BasicReturns import BasicReturn
+
+# Pydantic coerces the string "false" → bool False
+r = BasicReturn(ok="false")
+print(r.ok)   # False  (coerced by Pydantic)
+print(type(r.ok))  # <class 'bool'>
+
+# Pydantic raises ValidationError for values it cannot coerce
+from pydantic import ValidationError
+
+try:
+    bad = BasicReturn(ok="yes")  # "yes" cannot be coerced to bool
+except ValidationError as e:
+    print(e)
+    # 1 validation error for BasicReturn
+    # ok
+    #   Input should be a valid boolean, unable to interpret input [...]
+```
+
+This means runtime behaviour matches what your type annotations promise — fields will always hold the expected types unless explicitly bypassed.
+
+---
+
+## The `data` field and flexibility
+
+`data: Optional[Any]` is intentionally untyped to give you maximum flexibility — it can hold a dict, a list, a dataclass, a Pydantic model, or any other object. If your application always returns the same type in `data`, you can create a typed subclass for stricter guarantees:
+
+```python
+from typing import Optional
+from BasicReturns import DataAndMsgReturn
+
+class UserReturn(DataAndMsgReturn):
+    """A DataAndMsgReturn where data is always a User dict or None."""
+    data: Optional[dict] = None  # narrow the type
+
+def get_user(user_id: int) -> UserReturn:
+    response = UserReturn()
+    try:
+        response.data = {"id": user_id, "name": "Alice"}
+        response.msg = "User loaded"
+    except Exception as e:
+        response.ok = False
+        response.error = e
+        response.msg = "User not found"
+    return response
+```
+
+For the general case, use `isinstance` checks after reading `data` to narrow the type before operating on it:
+
+```python
+result = get_user_profile(42)
+
+if result.ok and isinstance(result.data, dict):
+    print(result.data["name"])  # MyPy now knows result.data is dict
+```
+
+---
+
+<Tip>
+  Use `reveal_type()` inside your source file while running MyPy to verify that the analyser infers the exact type you expect:
+
+  ```python
+  from BasicReturns import BasicReturn
+
+  r = BasicReturn()
+  reveal_type(r.ok)     # Revealed type is "Optional[bool]"
+  reveal_type(r.error)  # Revealed type is "Optional[Any]"
+  ```
+
+  Remove `reveal_type` calls before committing — they are a MyPy diagnostic tool only and will raise a `NameError` at runtime.
+</Tip>

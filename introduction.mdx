@@ -1,0 +1,94 @@
+---
+title: "BasicReturns: Standardized Python Return Values"
+sidebarTitle: "Introduction"
+description: "BasicReturns standardizes Python returns with Pydantic models, giving every function a uniform ok/error/data shape so error handling stays consistent."
+---
+
+BasicReturns solves one of Python's most common pain points: every function inventing its own return convention. By providing two Pydantic-powered models — `BasicReturn` and `DataAndMsgReturn` — the library gives every function in your project the same success/failure shape, so callers always know exactly what they're getting back.
+
+## What is BasicReturns?
+
+Without a shared convention, Python functions return success and failure in wildly different ways: some raise exceptions, some return `None`, some return `(data, error)` tuples, and others use ad-hoc dictionaries. This inconsistency forces every caller to learn each function's unique contract, making code harder to read, test, and maintain.
+
+BasicReturns eliminates that ambiguity by offering two ready-made return models built on [Pydantic](https://docs.pydantic.dev/). Both models carry an `ok` boolean — mirroring the familiar HTTP success/failure pattern — plus an `error` field for structured error capture. The richer `DataAndMsgReturn` adds `data` and `msg` fields for operations that need to return a payload and a human-readable status message. Wrap your function body in a try/except, set the fields, and return the model — the same pattern works everywhere.
+
+## Key Benefits
+
+<CardGroup cols={2}>
+  <Card
+    icon="shield-check"
+    title="Consistent Error Handling"
+    href="#two-public-classes"
+  >
+    Every function returns the same `ok` / `error` shape, so callers never have to guess whether a falsy result means `None`, `False`, or an empty list.
+  </Card>
+  <Card
+    icon="message"
+    title="Human-Readable Messages"
+    href="#two-public-classes"
+  >
+    The `msg` field on `DataAndMsgReturn` lets functions communicate what happened in plain language without polluting log streams or raising exceptions.
+  </Card>
+  <Card
+    icon="bracket-curly"
+    title="Type Safety"
+    href="#version-license--python-support"
+  >
+    Both models carry full type annotations and the package ships a `py.typed` marker, giving you accurate autocompletion and MyPy / Pyright support out of the box.
+  </Card>
+  <Card
+    icon="file-export"
+    title="Serialization Ready"
+    href="#two-public-classes"
+  >
+    The built-in `to_dict()` method on every model lets you convert results straight to a dictionary for JSON responses, logging, or further processing.
+  </Card>
+  <Card
+    icon="bolt"
+    title="Zero Boilerplate"
+    href="/quickstart"
+  >
+    One import, one model, one pattern. There is no configuration, no subclassing required for everyday use, and no runtime overhead beyond Pydantic's validation.
+  </Card>
+  <Card
+    icon="python"
+    title="Broad Python Support"
+    href="#version-license--python-support"
+  >
+    Tested on Python 3.8 through 3.12 and compatible with any framework — FastAPI, Flask, Django, CLI scripts, and plain modules alike.
+  </Card>
+</CardGroup>
+
+## Two Public Classes
+
+BasicReturns exports exactly two classes. Both live in the `BasicReturns` package and can be imported together in a single line.
+
+| Class | Inherits from | Fields | Best used when |
+|---|---|---|---|
+| `BasicReturn` | `pydantic.BaseModel` | `ok`, `error` | The operation either succeeds or fails with no payload to return — e.g. a write, delete, or validation step. |
+| `DataAndMsgReturn` | `BasicReturn` | `ok`, `error`, `msg`, `data` | The operation returns a value on success and you want a human-readable status message alongside it. |
+
+Both classes default `ok` to `True` so you only need to set the failure fields when something goes wrong, keeping happy-path code clean. Both also expose a `to_dict()` method that serializes all fields to a plain Python dictionary.
+
+## Version, License & Python Support
+
+| Property | Value |
+|---|---|
+| Version | `0.1.1` |
+| License | MIT |
+| Python | 3.8 · 3.9 · 3.10 · 3.11 · 3.12 |
+| Dependency | `pydantic==2.12.5` (installed automatically) |
+| PyPI | [pypi.org/project/BasicReturns](https://pypi.org/project/BasicReturns/) |
+| Source | [github.com/Dev2Forge/BasicReturns](https://github.com/Dev2Forge/BasicReturns) |
+
+The library is in **Beta** (Development Status 4) and is actively maintained by [Dev2Forge](https://github.com/Dev2Forge).
+
+## Ready to Get Started?
+
+<Card
+  icon="rocket"
+  title="Quickstart — Up and Running in 5 Minutes"
+  href="/quickstart"
+>
+  Install BasicReturns, import both models, and write your first standardized function with a working example you can copy straight into your project.
+</Card>

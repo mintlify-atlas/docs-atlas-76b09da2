@@ -1,0 +1,204 @@
+---
+title: "Best Practices for Consistent Return Values"
+sidebarTitle: "Best Practices"
+description: "Recommended patterns for using BasicReturns across a codebase to maximise consistency, debuggability, and clarity in every function's return contract."
+---
+
+BasicReturns is most valuable when every function in a codebase follows the same conventions — not just using the same return types, but populating fields in the same way and checking them in the same order. The practices below capture the patterns that appear throughout the BasicReturns documentation and README, distilled into concrete rules you can apply immediately.
+
+<Steps>
+  <Step title="Always check ok before accessing data">
+    `DataAndMsgReturn.data` defaults to `None`, even on a successful return, if the function did not explicitly set it. Accessing `result.data` without first verifying `result.ok` can silently produce `None` in places where you expect a value.
+
+    ```python
+    result = fetch_api_data("https://api.example.com/items")
+
+    # ✅ Correct: check ok first
+    if result.ok:
+        process(result.data)
+    else:
+        print(f"Request failed: {result.error}")
+
+    # ❌ Incorrect: data may be None even if the call appeared to succeed
+    process(result.data)
+    ```
+  </Step>
+
+  <Step title="Set msg on both success and failure paths">
+    A descriptive `msg` on both paths makes logs and debugging output immediately useful without having to inspect raw exception objects. Treat `msg` as the human-readable summary of what happened — always set it before returning.
+
+    ```python
+    def divide_numbers(a: float, b: float) -> DataAndMsgReturn:
+        response = DataAndMsgReturn()
+
+        try:
+            if b == 0:
+                raise ZeroDivisionError("Cannot divide by zero")
+            response.data = a / b
+            response.msg = "Division completed successfully"  # ✅ success path
+        except Exception as e:
+            response.ok = False
+            response.error = e
+            response.msg = "Division failed"  # ✅ failure path
+
+        return response
+    ```
+  </Step>
+
+  <Step title="Set error explicitly on failure">
+    When `ok` is `False`, always assign an exception or descriptive value to `error`. Leaving `error = None` while `ok = False` forces callers to rely solely on `msg` for diagnosis, discards the original exception and its stack trace, and breaks any tooling that inspects `error` for structured reporting.
+
+    ```python
+    # ❌ Incorrect: error is never set, caller cannot determine what went wrong
+    def bad_read(filename: str) -> DataAndMsgReturn:
+        response = DataAndMsgReturn()
+        if not Path(filename).is_file():
+            response.ok = False
+            response.msg = "File not found"  # no error set
+        return response
+
+    # ✅ Correct: error carries the original exception
+    def good_read(filename: str) -> DataAndMsgReturn:
+        response = DataAndMsgReturn()
+        if not Path(filename).is_file():
+            response.ok = False
+            response.error = FileNotFoundError(f"File '{filename}' not found")
+            response.msg = "File does not exist"
+        return response
+    ```
+  </Step>
+
+  <Step title="Use BasicReturn for write/action operations, DataAndMsgReturn for read/query operations">
+    Choose the return type that matches the function's purpose. If the caller needs a result value, use `DataAndMsgReturn`. If the function only performs a side effect and the caller only needs to know whether it succeeded, `BasicReturn` is sufficient and signals that intent to the reader.
+
+    ```python
+    from BasicReturns import BasicReturn, DataAndMsgReturn
+
+    # Read/query → caller needs data → DataAndMsgReturn
+    def get_user(user_id: int) -> DataAndMsgReturn:
+        response = DataAndMsgReturn()
+        # ... fetch user ...
+        response.data = user
+        response.msg = f"User {user_id} loaded"
+        return response
+
+    # Write/action → caller only needs ok/error → BasicReturn
+    def delete_user(user_id: int) -> BasicReturn:
+        response = BasicReturn()
+        # ... delete user ...
+        return response
+    ```
+  </Step>
+
+  <Step title="Consistent error handling">
+    Validate inputs at the top of the function and return early with a fully populated failure result before doing any real work. This keeps the main logic free of nested conditionals and makes the validation rules easy to read and test in isolation. The following example is taken directly from the BasicReturns README:
+
+    ```python
+    def process_data(data: Any) -> DataAndMsgReturn:
+        response = DataAndMsgReturn()
+
+        if not data:
+            response.ok = False
+            response.error = ValueError("Empty data provided")
+            response.msg = "Validation failed"
+            return response
+
+        # Process data...
+        response.data = processed_data
+        response.msg = "Data processed successfully"
+        return response
+    ```
+  </Step>
+
+  <Step title="Serialise with to_dict() for APIs and logging">
+    Both `BasicReturn` and `DataAndMsgReturn` provide a `to_dict()` method that returns a plain dictionary. Use it when forwarding a result to an HTTP response, a message queue, or a structured log entry — anywhere that expects a serialisable mapping rather than a Pydantic model.
+
+    ```python
+    result = fetch_api_data("https://api.example.com/orders")
+
+    # BasicReturn.to_dict() → {"ok": True, "error": None}
+    # DataAndMsgReturn.to_dict() → {"ok": True, "error": None, "msg": "...", "data": {...}}
+    payload = result.to_dict()
+
+    import json
+    # Use default=str to handle exception objects in the error field
+    print(json.dumps(payload, default=str))
+    ```
+
+    Note that `DataAndMsgReturn.to_dict()` returns an empty dict `{}` for `data` when `data` is `None` or falsy, so downstream consumers always receive a consistent type for that field.
+  </Step>
+</Steps>
+
+## Common Mistakes
+
+<Accordion title="Accessing data without checking ok">
+  **The bug:** Accessing `result.data` directly assumes the operation succeeded. If it did not, `data` is `None` and any subsequent attribute access or iteration will raise an unexpected error — far from the point where the real failure occurred.
+
+  ```python
+  # ❌ Bug: data is None when ok is False
+  result = FilesUtils.read_json("config.json")
+  config = result.data          # None if file was missing
+  db_host = config["host"]      # KeyError or TypeError, misleading traceback
+  ```
+
+  **The fix:** Always gate access to `data` behind an `ok` check. Handle the failure path explicitly so errors surface with meaningful context.
+
+  ```python
+  # ✅ Fix: check ok first
+  result = FilesUtils.read_json("config.json")
+  if result.ok:
+      db_host = result.data["host"]
+  else:
+      print(f"Could not load config: {result.msg} — {result.error}")
+  ```
+</Accordion>
+
+<Accordion title="Forgetting to set error when ok=False">
+  **The bug:** Setting `ok = False` without assigning `error` leaves callers with no structured information about what went wrong. `msg` alone is a string and cannot be caught, compared programmatically, or logged with a stack trace.
+
+  ```python
+  # ❌ Bug: error is None, caller has no exception to inspect
+  response.ok = False
+  response.msg = "Something went wrong"
+  return response
+  ```
+
+  **The fix:** Always assign an exception (or at minimum a descriptive value) to `error` whenever `ok` is `False`. This preserves the original exception for callers that need to re-raise, log, or inspect it.
+
+  ```python
+  # ✅ Fix: set error explicitly
+  except Exception as e:
+      response.ok = False
+      response.error = e
+      response.msg = "Something went wrong"
+  return response
+  ```
+</Accordion>
+
+<Accordion title="Using raw exceptions instead of BasicReturns">
+  **When raising is fine:** Inside a single function or a tightly scoped module where the exception will be caught immediately in the same call frame, a plain `raise` is idiomatic Python and perfectly readable.
+
+  ```python
+  def parse_int(value: str) -> int:
+      # Fine: simple utility, caller is expected to handle ValueError
+      return int(value)
+  ```
+
+  **When to prefer BasicReturns:** Use `BasicReturn` or `DataAndMsgReturn` at the boundaries of your application — I/O operations, network calls, external service integrations, and any function whose result will be checked by multiple callers in different parts of the codebase. These are the places where a uniform `ok`/`error` contract eliminates the need for every call site to know which exceptions to catch.
+
+  ```python
+  # ✅ Prefer BasicReturns at I/O and service boundaries
+  def fetch_api_data(url: str) -> DataAndMsgReturn:
+      response = DataAndMsgReturn()
+      try:
+          api_response = requests.get(url, timeout=10)
+          api_response.raise_for_status()
+          response.data = api_response.json()
+          response.msg = f"Successfully fetched data from {url}"
+      except requests.exceptions.RequestException as e:
+          response.ok = False
+          response.error = e
+          response.msg = f"API request failed: {url}"
+      return response
+  ```
+</Accordion>

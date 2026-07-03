@@ -1,0 +1,134 @@
+---
+title: "Integrate External APIs Using BasicReturns"
+sidebarTitle: "API Integration"
+description: "Wrap HTTP calls and external API requests with BasicReturns to give every network operation a consistent, inspectable success/failure structure."
+---
+
+Calling external APIs introduces several failure modes at once: network timeouts, non-200 status codes, malformed JSON, and service-level errors. Without a unified return contract, each layer of your application ends up with its own ad-hoc error handling. BasicReturns solves this by wrapping every HTTP interaction in a `DataAndMsgReturn`, so every caller gets the same `ok`, `error`, `msg`, and `data` fields regardless of what went wrong.
+
+## Fetching API Data
+
+The example below is the canonical BasicReturns pattern for HTTP requests. `requests.get` is called inside a try/except block; `raise_for_status()` converts any non-2xx response into an exception that is caught uniformly alongside network errors.
+
+```python
+import requests
+from BasicReturns import DataAndMsgReturn
+
+def fetch_api_data(url: str) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+
+    try:
+        api_response = requests.get(url, timeout=10)
+        api_response.raise_for_status()
+
+        response.data = api_response.json()
+        response.msg = f"Successfully fetched data from {url}"
+    except requests.exceptions.RequestException as e:
+        response.ok = False
+        response.error = e
+        response.msg = f"API request failed: {url}"
+
+    return response
+```
+
+## Extended Patterns
+
+The sections below show natural extensions of the pattern above, all using only the documented `ok`, `error`, `msg`, and `data` fields.
+
+### Handling Non-200 Status Codes
+
+`api_response.raise_for_status()` raises a `requests.exceptions.HTTPError` for any 4xx or 5xx response. Because this call sits inside the same try/except block, the error lands in `response.error` and `response.ok` is set to `False` — exactly the same as a network-level failure. No extra branching is needed at the call site.
+
+```python
+import requests
+from BasicReturns import DataAndMsgReturn
+
+def fetch_user(user_id: int) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+
+    try:
+        api_response = requests.get(
+            f"https://api.example.com/users/{user_id}",
+            timeout=10
+        )
+        api_response.raise_for_status()  # Raises HTTPError for 4xx/5xx
+
+        response.data = api_response.json()
+        response.msg = f"Successfully fetched user {user_id}"
+    except requests.exceptions.RequestException as e:
+        response.ok = False
+        response.error = e
+        response.msg = f"API request failed for user {user_id}"
+
+    return response
+```
+
+### Passing the Response to Callers
+
+Once `fetch_api_data` (or any wrapper built on the same pattern) returns, the caller checks `result.ok` before touching `result.data`. This single check covers every failure mode — network error, bad status code, or JSON parse failure — without requiring the caller to know which one occurred.
+
+```python
+result = fetch_api_data("https://api.example.com/products")
+
+if result.ok:
+    products = result.data
+    print(f"{result.msg}: {len(products)} products loaded")
+else:
+    print(f"Failed to load products — {result.msg}")
+    print(f"Error detail: {result.error}")
+```
+
+### Setting a Descriptive `msg` on Both Paths
+
+Always populate `msg` regardless of whether the request succeeded or failed. On the success path a descriptive message helps with logging and tracing; on the failure path it gives the caller a human-readable summary without having to inspect the raw exception.
+
+```python
+import requests
+from BasicReturns import DataAndMsgReturn
+
+def fetch_inventory(warehouse_id: str) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+
+    try:
+        api_response = requests.get(
+            f"https://api.example.com/inventory/{warehouse_id}",
+            timeout=10
+        )
+        api_response.raise_for_status()
+
+        response.data = api_response.json()
+        response.msg = f"Inventory loaded for warehouse {warehouse_id}"
+    except requests.exceptions.RequestException as e:
+        response.ok = False
+        response.error = e
+        response.msg = f"Failed to load inventory for warehouse {warehouse_id}"
+
+    return response
+```
+
+## Serialising for Downstream Use
+
+When forwarding an API result to another service — or writing it to a log — call `result.to_dict()` to get a plain dictionary. `DataAndMsgReturn.to_dict()` returns all four fields (`ok`, `error`, `msg`, `data`), making it straightforward to serialise or pass to a JSON encoder.
+
+```python
+result = fetch_api_data("https://api.example.com/orders")
+
+# Forward the full result as a dictionary
+payload = result.to_dict()
+# {"ok": True, "error": None, "msg": "Successfully fetched data from ...", "data": {...}}
+
+import json
+print(json.dumps(payload, default=str))  # default=str handles exception objects
+```
+
+<Warning>
+  `requests` is **not** a dependency of BasicReturns and must be installed separately before running any of the examples on this page.
+
+  ```python
+  pip install requests
+  ```
+</Warning>
+
+<Tip>
+  Always pass a `timeout` argument to every `requests.get()` call, as shown in the examples above (`timeout=10`). Without it, a slow or unresponsive server will cause your application to hang indefinitely. A timeout converts that hang into a `requests.exceptions.Timeout` exception, which is caught by the existing `RequestException` handler and stored cleanly in `response.error`.
+</Tip>

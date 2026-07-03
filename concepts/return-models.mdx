@@ -1,0 +1,157 @@
+---
+title: "Understanding BasicReturn and DataAndMsgReturn"
+sidebarTitle: "Return Models"
+description: "Explore the two core Pydantic models that BasicReturns provides — BasicReturn and DataAndMsgReturn — and learn when to use each one."
+---
+
+BasicReturns ships two Pydantic `BaseModel` subclasses that standardise what every function in your application returns. Both classes live in `BasicReturns.main` and are re-exported from the top-level `BasicReturns` package, so you can import them directly with `from BasicReturns import BasicReturn, DataAndMsgReturn`.
+
+## BasicReturn
+
+`BasicReturn` is the base return model. Use it for operations that only need to signal success or failure — there is no payload to carry back, and a human-readable message is not required.
+
+### Fields
+
+<ParamField path="ok" type="Optional[bool]" default="True">
+  `True` when the operation succeeded; set to `False` to indicate a failure. Mirrors the semantics of an HTTP 2xx/4xx-5xx status code.
+</ParamField>
+
+<ParamField path="error" type="Optional[Any]" default="None">
+  The exception or error object attached to the failure. Remains `None` on success. Typically holds an `Exception` instance, but can be any object.
+</ParamField>
+
+### Methods
+
+| Method | Return type | Description |
+|---|---|---|
+| `to_dict()` | `dict` | Returns `{"ok": self.ok, "error": self.error}` |
+| `__str__()` | `str` | Returns `'OK: {ok}\nError: {error}'` |
+
+### Example
+
+```python
+import json
+from BasicReturns import BasicReturn
+
+def write_config(path: str, data: dict) -> BasicReturn:
+    response = BasicReturn()
+
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except OSError as e:
+        response.ok = False
+        response.error = e
+
+    return response
+
+
+result = write_config("config.json", {"debug": True})
+
+if result.ok:
+    print("Config saved successfully.")
+else:
+    print(f"Failed to save config: {result.error}")
+
+# Serialise for logging or an API response
+print(result.to_dict())
+# {'ok': False, 'error': FileNotFoundError(...)}
+```
+
+---
+
+## DataAndMsgReturn
+
+`DataAndMsgReturn` extends `BasicReturn`, inheriting both `ok` and `error`. It adds two extra fields for operations that need to return a result payload and a human-readable status message.
+
+### Fields
+
+<ParamField path="ok" type="Optional[bool]" default="True">
+  Inherited from `BasicReturn`. `True` on success, `False` on failure.
+</ParamField>
+
+<ParamField path="error" type="Optional[Any]" default="None">
+  Inherited from `BasicReturn`. The error object when `ok` is `False`.
+</ParamField>
+
+<ParamField path="msg" type="Optional[str]" default="None">
+  A human-readable message describing the outcome of the operation — useful for UI feedback or log entries.
+</ParamField>
+
+<ParamField path="data" type="Optional[Any]" default="None">
+  The result payload on success. Can hold any type: a dict, list, dataclass instance, or primitive value. `to_dict()` falls back to `{}` when this is `None`.
+</ParamField>
+
+### Methods
+
+| Method | Return type | Description |
+|---|---|---|
+| `to_dict()` | `dict` | Returns `{"ok", "error", "msg", "data"}` — `data` falls back to `{}` if `None` |
+| `__str__()` | `str` | Returns all four fields formatted across multiple lines |
+
+### Example
+
+```python
+import json
+from BasicReturns import DataAndMsgReturn
+
+def parse_json_string(raw: str) -> DataAndMsgReturn:
+    response = DataAndMsgReturn()
+
+    try:
+        response.data = json.loads(raw)
+        response.msg = "JSON parsed successfully"
+    except json.JSONDecodeError as e:
+        response.ok = False
+        response.error = e
+        response.msg = "Invalid JSON — could not parse input"
+
+    return response
+
+
+result = parse_json_string('{"key": "value"}')
+
+if result.ok:
+    print(result.msg)        # JSON parsed successfully
+    print(result.data)       # {'key': 'value'}
+else:
+    print(result.msg)        # Invalid JSON — could not parse input
+    print(result.error)      # JSONDecodeError(...)
+
+# Serialise for an API response
+print(result.to_dict())
+# {'ok': True, 'error': None, 'msg': 'JSON parsed successfully', 'data': {'key': 'value'}}
+```
+
+---
+
+## Inheritance diagram
+
+```
+BasicReturn                         (pydantic.BaseModel)
+├── ok: Optional[bool] = True
+├── error: Optional[Any] = None
+├── to_dict()   → {"ok", "error"}
+└── __str__()   → 'OK: ...\nError: ...'
+
+DataAndMsgReturn                    (BasicReturn)
+├── msg: Optional[str] = None
+├── data: Optional[Any] = None
+├── to_dict()   → {"ok", "error", "msg", "data"}   # overrides parent
+└── __str__()   → all four fields                  # overrides parent
+```
+
+---
+
+## When to use which
+
+| Situation | Recommended model |
+|---|---|
+| Simple write, delete, or side-effect — caller only needs to know if it worked | `BasicReturn` |
+| Operation that returns a result value the caller will use | `DataAndMsgReturn` |
+| Operation that surfaces messages to a UI, CLI, or log | `DataAndMsgReturn` |
+| Chaining multiple steps where intermediate steps carry no payload | `BasicReturn` |
+
+<Note>
+  Both `BasicReturn` and `DataAndMsgReturn` are Pydantic `BaseModel` subclasses, so all standard Pydantic features are available: field validation, `.model_dump()`, `.model_validate()`, JSON serialisation via `.model_dump_json()`, and schema generation via `.model_json_schema()`.
+</Note>

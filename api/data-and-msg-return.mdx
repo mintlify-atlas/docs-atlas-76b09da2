@@ -1,0 +1,157 @@
+---
+title: "DataAndMsgReturn Class Reference"
+sidebarTitle: "DataAndMsgReturn"
+description: "Extends BasicReturn with msg and data fields for rich operation results with payload and context."
+---
+
+`DataAndMsgReturn` extends `BasicReturn` with two additional fields — `msg` for a human-readable operation message and `data` for the result payload. It is the primary return type for functions that produce output.
+
+```python
+from BasicReturns import DataAndMsgReturn
+```
+
+## Class Signature
+
+```python
+from typing import Any, Optional
+from BasicReturns import BasicReturn
+
+class DataAndMsgReturn(BasicReturn):
+    msg: Optional[str] = None
+    data: Optional[Any] = None
+```
+
+## Inherited Fields
+
+These fields are inherited from `BasicReturn` and behave identically.
+
+<ParamField path="ok" type="Optional[bool]" default="True">
+  `True` when the operation completed successfully. Set to `False` on failure.
+</ParamField>
+
+<ParamField path="error" type="Optional[Any]" default="None">
+  The exception or error object when `ok` is `False`. Defaults to `None`.
+</ParamField>
+
+## Additional Fields
+
+<ParamField path="msg" type="Optional[str]" default="None">
+  A human-readable message describing the operation result. Recommended on both success and failure paths to make logs and error reports self-explanatory.
+</ParamField>
+
+<ParamField path="data" type="Optional[Any]" default="None">
+  The result payload of the operation. Typically populated on success; left as `None` on failure.
+</ParamField>
+
+## Methods
+
+### `to_dict()`
+
+Overrides `BasicReturn.to_dict()` to include all four fields.
+
+```python
+def to_dict(self) -> dict:
+    return {
+        **super().to_dict(),
+        "msg": self.msg,
+        "data": self.data if self.data else {}
+    }
+```
+
+**Return value**
+
+<ResponseField name="ok" type="bool">
+  Whether the operation succeeded.
+</ResponseField>
+
+<ResponseField name="error" type="Any or None">
+  The error if `ok` is `False`, otherwise `None`.
+</ResponseField>
+
+<ResponseField name="msg" type="str or None">
+  The human-readable operation message, or `None` if not set.
+</ResponseField>
+
+<ResponseField name="data" type="Any or {}">
+  The result payload, or an empty dict `{}` if `data` is `None`.
+</ResponseField>
+
+---
+
+### `__str__()`
+
+Returns a human-readable string representation of all four fields, formatted as:
+
+```
+OK: {ok}
+Error: {error}
+Message: {msg}
+Data: {data}
+Error: {error}
+```
+
+## Constructor Shorthand
+
+Because `DataAndMsgReturn` is a Pydantic model, all fields can be set directly at construction time instead of being assigned after instantiation.
+
+```python
+result = DataAndMsgReturn(
+    ok=False,
+    error=ValueError("Bad input"),
+    msg="Validation failed"
+)
+```
+
+## Full Usage Example
+
+```python
+from BasicReturns import DataAndMsgReturn
+
+def divide_numbers(a: float, b: float) -> DataAndMsgReturn:
+    """Safely divide two numbers with unified return structure."""
+    response = DataAndMsgReturn()
+
+    try:
+        if b == 0:
+            raise ZeroDivisionError("Cannot divide by zero")
+        response.data = a / b
+        response.msg = "Division completed successfully"
+    except Exception as e:
+        response.ok = False
+        response.error = e
+        response.msg = "Division failed"
+
+    return response
+
+# Usage example
+result = divide_numbers(10, 2)
+
+if result.ok:
+    print(f"{result.msg}: {result.data}")  # Division completed successfully: 5.0
+else:
+    print(f"{result.msg}: {result.error}")  # Division failed: Cannot divide by zero
+```
+
+## `to_dict()` Output Examples
+
+**Success case**
+
+```python
+result = divide_numbers(10, 2)
+print(result.to_dict())
+# {'ok': True, 'error': None, 'msg': 'Division completed successfully', 'data': 5.0}
+```
+
+**Failure case**
+
+```python
+result = divide_numbers(10, 0)
+print(result.to_dict())
+# {'ok': False, 'error': ZeroDivisionError('Cannot divide by zero'), 'msg': 'Division failed', 'data': {}}
+```
+
+<Tip>
+  Always set `msg` on both success and failure paths. A consistent message on every return makes logs scannable and error reports self-contained — you immediately know what the operation was and what happened, without needing to inspect `data` or `error` first.
+</Tip>
+
+See [BasicReturn](/api/basic-return) for the base class.
