@@ -1,5 +1,5 @@
 ---
-title: "BasicReturns: Standardized Python Return Values"
+title: "BasicReturns: Standardized Python Return Values Library"
 sidebarTitle: "Introduction"
 description: "BasicReturns standardizes Python returns with Pydantic models, giving every function a uniform ok/error/data shape so error handling stays consistent."
 ---
@@ -18,28 +18,28 @@ BasicReturns eliminates that ambiguity by offering two ready-made return models 
   <Card
     icon="shield-check"
     title="Consistent Error Handling"
-    href="#two-public-classes"
+    href="/concepts/error-handling"
   >
     Every function returns the same `ok` / `error` shape, so callers never have to guess whether a falsy result means `None`, `False`, or an empty list.
   </Card>
   <Card
     icon="message"
     title="Human-Readable Messages"
-    href="#two-public-classes"
+    href="/concepts/return-models"
   >
     The `msg` field on `DataAndMsgReturn` lets functions communicate what happened in plain language without polluting log streams or raising exceptions.
   </Card>
   <Card
     icon="bracket-curly"
     title="Type Safety"
-    href="#version-license--python-support"
+    href="/concepts/type-safety"
   >
     Both models carry full type annotations and the package ships a `py.typed` marker, giving you accurate autocompletion and MyPy / Pyright support out of the box.
   </Card>
   <Card
     icon="file-export"
     title="Serialization Ready"
-    href="#two-public-classes"
+    href="/concepts/return-models"
   >
     The built-in `to_dict()` method on every model lets you convert results straight to a dictionary for JSON responses, logging, or further processing.
   </Card>
@@ -53,7 +53,7 @@ BasicReturns eliminates that ambiguity by offering two ready-made return models 
   <Card
     icon="python"
     title="Broad Python Support"
-    href="#version-license--python-support"
+    href="/installation"
   >
     Tested on Python 3.8 through 3.12 and compatible with any framework — FastAPI, Flask, Django, CLI scripts, and plain modules alike.
   </Card>

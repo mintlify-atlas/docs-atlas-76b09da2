@@ -8,14 +8,14 @@ Building file utilities in Python often means dealing with a mix of exceptions, 
 
 ## The FilesUtils Class
 
-The following example implements three file operations — reading raw text, parsing JSON, and writing JSON — each returning a unified result object. Notice that `read_file` and `read_json` return `DataAndMsgReturn` because they produce data for the caller, while `write_json` returns `BaseReturn` because the caller only needs to know whether the write succeeded.
+The following example implements three file operations — reading raw text, parsing JSON, and writing JSON — each returning a unified result object. Notice that `read_file` and `read_json` return `DataAndMsgReturn` because they produce data for the caller, while `write_json` returns `BasicReturn` because the caller only needs to know whether the write succeeded.
 
 ```python
 from io import TextIOWrapper
 from pathlib import Path
 import json
 from typing import Any
-from BasicReturns import BaseReturn, DataAndMsgReturn
+from BasicReturns import BasicReturn, DataAndMsgReturn
 
 class FilesUtils:
     @staticmethod
@@ -68,18 +68,16 @@ class FilesUtils:
         return response
 
     @staticmethod
-    def write_json(filename: str, data: dict) -> BaseReturn:
+    def write_json(filename: str, data: dict) -> BasicReturn:
         """Write dictionary to JSON file with atomic operation handling."""
-        response = BaseReturn()
+        response = BasicReturn()
 
         try:
             with open(filename, 'w', encoding='utf-8') as file:
                 json.dump(data, file, indent=2, sort_keys=True, ensure_ascii=False)
-            response.msg = f"Successfully wrote JSON to: {filename}"
         except Exception as e:
             response.ok = False
             response.error = e
-            response.msg = f"Failed to write JSON file: {filename}"
 
         return response
 ```
@@ -119,7 +117,7 @@ Both `read_file` and `read_json` need to hand data back to the caller — the ra
 
 **Why `BasicReturn` is sufficient for write operations**
 
-`write_json` only needs to communicate success or failure — there is no result value to return. Using `BasicReturn` (aliased as `BaseReturn` in the import) keeps the return type minimal and makes the function's intent immediately clear to anyone reading the code.
+`write_json` only needs to communicate success or failure — there is no result value to return. Using `BasicReturn` keeps the return type minimal and makes the function's intent immediately clear to anyone reading the code.
 
 **How errors propagate from `read_file` into `read_json`**
 
